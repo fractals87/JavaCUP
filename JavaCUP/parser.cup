@@ -1,0 +1,168 @@
+/*
+   Simple +/-/* expression language; 
+   parser evaluates constant expressions on the fly
+*/
+
+package cup.example;
+
+import java_cup.runtime.*;
+import cup.example.Lexer;
+import cup.tools.*;
+import java.io.IOException;
+import java.io.File;
+import java.io.FileInputStream;
+
+parser code {:
+  protected Lexer lexer;
+  protected SymbolTable st;
+  protected boolean isCorrect;
+  protected StringBuffer codice;
+:}
+
+/* define how to connect to the scanner! */
+init with {:
+  ComplexSymbolFactory f = new ComplexSymbolFactory();
+  symbolFactory = f;
+  File file = new File("input.txt");
+  FileInputStream fis = null;
+  try {
+    fis = new FileInputStream(file);
+  } catch (IOException e) {
+    e.printStackTrace();
+  } 
+  lexer = new Lexer(f,fis);
+
+  st = new SymbolTable();
+  st.init();
+
+  isCorrect = true;
+  codice = new StringBuffer();
+:};
+scan with {: return lexer.next_token(); :};
+
+/* Terminals (tokens returned by the scanner). */
+terminal            TYFLOAT, TYINT, PRINT, ASSIGN, PLUS, MINUS, TIMES, DIV, SEMI;
+terminal String		INT, FLOAT, ID; 
+
+/* Non terminals */
+non terminal            	Prog, DSs;
+non terminal TypeDescriptor Stm, Dcl, Expr, Val;
+non terminal Character      Op;
+
+/* Precedences */
+precedence left PLUS, MINUS;
+precedence left TIMES, DIV;
+
+/* The grammar rules */
+Prog	::= DSs					{:
+									if (isCorrect){
+										System.out.println("Program: Correct");
+										System.out.println(SymbolTable.toStr());
+										System.out.println("------------------");
+										System.out.println("CODE");
+										System.out.println("------------------");
+										System.out.println(codice);
+									}else{
+										System.out.println("Program: Not correct");
+									}
+								:}
+		  ;
+
+DSs		::= Dcl DSs				{: :}
+		  | Stm DSs				{: :}
+		  |                   	{: :}
+		  ;
+
+Dcl		::= TYFLOAT ID:name SEMI	{: 
+									Attributes id =  new Attributes(TypeDescriptor.FLOAT);
+									id.setReg();
+									if (SymbolTable.enter(name, id) == false) {
+										System.out.println("Var '" + name + "' already def");
+										isCorrect = false;
+										RESULT = TypeDescriptor.ERROR;
+									}
+								:}
+		  | TYINT ID:name SEMI	{:
+									Attributes id =  new Attributes(TypeDescriptor.INT);
+									id.setReg();
+									if (SymbolTable.enter(name, id) == false) {
+										System.out.println("Var '" + name + "' already def");
+										isCorrect = false;
+										RESULT = TypeDescriptor.ERROR;
+									}
+								:}
+		  ;
+            
+Stm		::= ID:idName ASSIGN Expr:expr SEMI	{:
+												Attributes id = SymbolTable.lookup(idName);
+												if (id == null) { 
+													System.out.println("Var " + idName + " not defined");
+													isCorrect = false;
+													RESULT = TypeDescriptor.ERROR;
+
+												}else if (Lib.compatibleType(id.getType(), expr)) {
+													RESULT = TypeDescriptor.VOID;
+													codice.append("s").append(id.getReg()).append(" 0 k ");
+												} else {
+													System.out.println("ASSING not valid");
+													isCorrect = false;
+													RESULT = TypeDescriptor.ERROR;
+												}											
+											:}
+		  | PRINT ID:idName SEMI		{: 
+									Attributes id = SymbolTable.lookup(idName);			
+        							codice.append("l")
+  	  	      						.append(id.getReg()).append(" ")
+  	  	      						.append("p ")	
+  	  	      						.append("P ");
+									RESULT = TypeDescriptor.VOID;									
+								:}
+		  ;
+            
+Expr	::= Expr:expl Op:op Expr:expr{: 
+										if (expl == TypeDescriptor.ERROR || expr == TypeDescriptor.ERROR) {
+											RESULT = TypeDescriptor.ERROR;
+										} else {
+											if ( (expl == TypeDescriptor.INT && expr== TypeDescriptor.FLOAT) || expl == TypeDescriptor.FLOAT && expr == TypeDescriptor.INT){
+												codice.append("5 k ")
+													  .append(op + " ");
+												RESULT = TypeDescriptor.FLOAT;
+											}else if (expl == TypeDescriptor.FLOAT && expr == TypeDescriptor.FLOAT) {
+												codice.append(op + " ");
+												RESULT = TypeDescriptor.FLOAT;
+											} else {
+												codice.append(op + " ");
+												RESULT = TypeDescriptor.INT;
+											}
+										}
+										:}
+		  | Val:val					{:
+										RESULT = val;
+									:}
+		  ;
+
+Op		::= PLUS			{: RESULT = '+'; :}
+		  | MINUS			{: RESULT = '-'; :}
+		  | TIMES			{: RESULT = '*'; :}
+		  | DIV				{: RESULT = '/'; :}
+		  ;
+            
+Val		::= INT:num				{: 
+								   codice.append(num + " ");
+								   RESULT = TypeDescriptor.INT; 
+								:}
+		  | FLOAT:num			{: 
+									codice.append(num + " ");
+									RESULT = TypeDescriptor.FLOAT; 
+								:}
+		  | ID:nameVar			{: 
+									Attributes id = SymbolTable.lookup(nameVar);
+									if (id == null) {
+										System.out.println("Var " + nameVar + " not defined");
+										isCorrect = false;
+										RESULT = TypeDescriptor.ERROR;
+									} else {
+										RESULT = TypeDescriptor.VOID; 
+									}
+								:}
+		  ;     

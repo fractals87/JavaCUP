@@ -1,0 +1,6 @@
+int i;
+float f;
+f = 1.0 / 6;
+print f;
+i = 1 / 6;
+print i;
